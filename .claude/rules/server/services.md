@@ -1,91 +1,14 @@
-# 🧠 Services Rules
-
-## 🎯 Objective
-
-Define strict rules for service layer implementation.
-
-The goal is to ensure:
-
-* Clean business logic
-* Decoupling from infrastructure
-* Predictable behavior
-* High maintainability
-
-Claude MUST follow these rules strictly.
-
+---
+globs: server/**
 ---
 
-## 🧠 Core Principle
+# Services, Errors & Prisma Rules
 
-Service = **the single source of truth for business logic**
+## Service Location
 
----
+`modules/<feature>/<feature>.service.ts` — flat file at module root, NOT in `services/` subfolder.
 
-## 📁 Location (FLAT — MANDATORY)
-
-```
-modules/<feature>/<feature>.service.ts
-```
-
-### ✅ Correct
-
-```
-modules/user/user.service.ts
-modules/auth/auth.service.ts
-```
-
-### ❌ Wrong
-
-```
-modules/user/services/user.service.ts   ❌
-```
-
-Services are flat files at the module root, NOT in a `services/` subfolder.
-
----
-
-## 🧩 Responsibilities
-
-Services MUST:
-
-* Contain ALL business rules
-* Orchestrate application logic
-* Communicate with PrismaService
-* Handle errors and edge cases
-* Control data flow between layers
-
----
-
-## ❌ Forbidden Responsibilities
-
-Services MUST NOT:
-
-* Handle HTTP (req, res)
-* Perform input validation (DTO's responsibility)
-* Render or format UI responses
-* Contain unrelated logic
-
----
-
-## 🔁 Method Structure Pattern
-
-Each service method MUST follow this flow:
-
-```typescript
-async methodName(input): Promise<OutputType> {
-  // 1. Hash/prepare data if needed (e.g. hash password before saving)
-  // 2. Fetch or write via PrismaService (wrapped in try/catch)
-  // 3. Apply business logic (check results, compare values)
-  // 4. Handle edge cases (throw NestJS exceptions)
-  // 5. Return clean result (typed with Pick<>)
-}
-```
-
----
-
-## 🧩 Output Typing (MANDATORY)
-
-There are **no entity files**. Define output types inline at the top of the service file:
+## Output Typing (inline Pick — no entity files)
 
 ```typescript
 import { User } from '@prisma/client'
@@ -93,141 +16,21 @@ import { User } from '@prisma/client'
 type UserPublic = Pick<User, 'id' | 'name' | 'email'>
 ```
 
-Then use it as the return type and enforce it via Prisma `select`:
+Define `type XPublic = Pick<X, ...>` at top of service file. Use Prisma `select` to match. NEVER return full records with sensitive fields.
+
+## Service Method Pattern
 
 ```typescript
-async findOne(id: string): Promise<UserPublic> {
-  // ...
-  return await this.prisma.user.findUnique({
-    where: { id },
-    select: { id: true, name: true, email: true },
-  })
+async methodName(input): Promise<OutputType> {
+  // 1. Prepare data (e.g. hash password)
+  // 2. Prisma operation (wrapped in try/catch)
+  // 3. Business logic (check results, compare values)
+  // 4. Handle edge cases (throw NestJS exceptions)
+  // 5. Return typed result
 }
 ```
 
-### ✅ DO
-
-* Define `type XPublic = Pick<X, ...>` at the top of every service file
-* Use Prisma `select` to match the output type fields exactly
-* Keep output shape consistent across all methods
-
-### ❌ DON'T
-
-* Do NOT return full Prisma records with `password` or other sensitive fields
-* Do NOT create separate entity class files
-
----
-
-## ⚠️ Error Handling Pattern (MANDATORY)
-
-All Prisma operations MUST be wrapped in `try/catch` to handle database errors:
-
-```typescript
-async create(data: CreateUserDto): Promise<UserPublic> {
-  const hashedPassword = await this.hashService.hashPassword(data.password)
-  try {
-    return await this.prisma.user.create({
-      data: { name: data.name, email: data.email, password: hashedPassword },
-      select: { id: true, name: true, email: true },
-    })
-  } catch (error) {
-    if (
-      error instanceof Prisma.PrismaClientKnownRequestError &&
-      error.code === 'P2002'
-    ) {
-      throw new ConflictException('E-mail já cadastrado')
-    }
-    throw new InternalServerErrorException('Erro ao criar usuário')
-  }
-}
-```
-
-### Common Prisma error codes
-
-| Code | Meaning | Exception to throw |
-|------|---------|-------------------|
-| `P2002` | Unique constraint violation | `ConflictException` |
-| `P2025` | Record not found | `NotFoundException` |
-
-### Rethrow Pattern (MANDATORY)
-
-When a NestJS exception is thrown inside the try block (e.g. after a `.findUnique()` check), it must be rethrown — not wrapped in `InternalServerErrorException`:
-
-```typescript
-} catch (error) {
-  if (error instanceof NotFoundException) throw error
-  if (error instanceof UnauthorizedException) throw error
-  throw new InternalServerErrorException('Erro ao buscar usuário')
-}
-```
-
----
-
-## 🌍 Error Message Language
-
-All error messages MUST be in **Portuguese (pt-BR)**:
-
-```typescript
-// ✅ Correct
-throw new NotFoundException('Usuário não encontrado')
-throw new ConflictException('E-mail já cadastrado')
-throw new UnauthorizedException('Email ou senha inválidos')
-
-// ❌ Wrong
-throw new NotFoundException('User not found')
-```
-
----
-
-## 🗄️ PrismaService Usage
-
-### ✅ DO
-
-* Inject `PrismaService` via constructor
-* Use `select` to limit returned fields
-* Use `include` intentionally and sparingly
-* Use `prisma.$transaction()` for multi-step operations that must be atomic
-
-### ❌ DON'T
-
-* Do NOT expose PrismaService outside services
-* Do NOT mix Prisma logic with business rules
-
----
-
-## 🔁 Cross-Module Usage
-
-### ✅ DO
-
-* Inject and use other services when needed
-* Example: `AuthService` injects `UserService` and `HashService`
-
-### ❌ DON'T
-
-* Do NOT directly access another module's PrismaService
-* Do NOT create circular dependencies
-
----
-
-## 🧠 Naming Conventions
-
-### ✅ DO
-
-Use clear, action-based names:
-
-* `create`
-* `findOne`
-* `findByEmailWithPassword`
-* `update`
-* `remove`
-
-### ❌ DON'T
-
-* Do NOT use vague names: `handleUser`, `processData`
-
----
-
-## 💡 Complete Example
+## Complete Example
 
 ```typescript
 import { ConflictException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common'
@@ -242,9 +45,10 @@ export class UserService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(data: CreateUserDto): Promise<UserPublic> {
+    const hashedPassword = await this.hashService.hashPassword(data.password)
     try {
       return await this.prisma.user.create({
-        data: { name: data.name, email: data.email },
+        data: { name: data.name, email: data.email, password: hashedPassword },
         select: { id: true, name: true, email: true },
       })
     } catch (error) {
@@ -271,32 +75,82 @@ export class UserService {
 }
 ```
 
----
+## Error Handling (MANDATORY)
 
-## ⚠️ Anti-Patterns
+All Prisma operations wrapped in `try/catch`. Handle specific Prisma codes, then fall back to `InternalServerErrorException`.
 
-Claude MUST avoid:
+### Rethrow Pattern (MANDATORY)
 
-* Business logic in controllers
-* Prisma access outside services
-* Fat methods (>50-80 lines)
-* Silent failures (swallowed errors)
-* Duplicated logic
-* Mixed responsibilities
-* `services/` subfolder inside modules
-* Error messages in English
+NestJS exceptions thrown inside `try` MUST be rethrown in `catch`:
 
----
+```typescript
+} catch (error) {
+  if (error instanceof NotFoundException) throw error
+  if (error instanceof UnauthorizedException) throw error
+  throw new InternalServerErrorException('Erro ao buscar usuário')
+}
+```
 
-## 🛑 Final Rule
+### Prisma Error Codes
 
-If a service:
+| Code | Meaning | Exception |
+|------|---------|-----------|
+| `P2002` | Unique constraint violation | `ConflictException` |
+| `P2025` | Record not found (update/delete) | `NotFoundException` |
 
-* Becomes hard to read
-* Mixes responsibilities
-* Leaks infrastructure details
+### Standard NestJS Exceptions
 
-→ STOP
-→ Refactor into smaller, clean units
+`NotFoundException`, `BadRequestException`, `UnauthorizedException`, `ForbiddenException`, `ConflictException`, `InternalServerErrorException`
 
-Services MUST remain the **core of clean architecture**
+### Error Messages — Portuguese (pt-BR) ONLY
+
+```typescript
+throw new NotFoundException('Usuário não encontrado')        // ✅
+throw new ConflictException('E-mail já cadastrado')          // ✅
+throw new UnauthorizedException('Email ou senha inválidos')  // ✅
+throw new NotFoundException('User not found')                // ❌
+```
+
+Messages must be clear, human-readable, specific. NEVER expose internal details (SQL, stack traces, Prisma messages).
+
+## Error Flow
+
+```
+Service throws NestJS exception → AllExceptionsFilter (global) → Structured response to client
+```
+
+## Prisma Rules
+
+### Location
+
+`modules/database/prisma.service.ts` — NO `src/prisma/` folder.
+
+```typescript
+@Injectable()
+export class PrismaService extends PrismaClient implements OnModuleInit {
+  async onModuleInit() { await this.$connect() }
+}
+```
+
+`DatabaseModule` exports `PrismaService`. Feature modules import `DatabaseModule`.
+
+### Query Rules
+
+- Always use `select` to limit returned fields — NEVER return password/tokens
+- Use `include` intentionally and sparingly
+- Use `prisma.$transaction()` for multi-step atomic operations
+- Keep queries simple and readable
+
+### Access Rules
+
+- Inject via constructor: `constructor(private readonly prisma: PrismaService) {}`
+- Used ONLY inside services — NEVER in controllers
+- Don't expose PrismaService across modules (use the module's service)
+- Don't access another module's PrismaService directly
+
+## Service Rules
+
+- Naming: `create`, `findOne`, `findByEmailWithPassword`, `update`, `remove` — never vague names
+- Cross-module: inject other services (e.g. `AuthService` injects `UserService`, `HashService`)
+- Max ~50-80 lines per method. Split if larger
+- FORBIDDEN: HTTP concepts (req/res), unrelated responsibilities, `services/` subfolder, error messages in English

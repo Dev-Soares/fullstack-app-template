@@ -116,6 +116,11 @@ export class UserService {
     try {
       return await this.prisma.user.delete({
         where: { id },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
       });
     } catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError) {

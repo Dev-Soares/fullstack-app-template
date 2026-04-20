@@ -1,210 +1,78 @@
-# 🛠️ Backend Overview (Server Rules)
-
-## 🎯 Objective
-
-Provide a high-level definition of the backend architecture, stack, and general rules.
-
-This document acts as the **global context** for all other backend rules.
-
-Claude MUST read and follow this before applying any other backend rule files.
-
+---
+globs: server/**
 ---
 
-## 🧠 Core Philosophy
+# Backend Rules
 
-This backend is built to be:
+## Tech Stack
 
-* Scalable
-* Modular
-* Secure
-* Predictable
-* Easy to maintain
+- NestJS, TypeScript, Prisma (ORM via `PrismaService` in `DatabaseModule`)
+- JWT (auth via HTTP-only cookies), class-validator + `@nestjs/swagger` (DTOs)
+- bcrypt via `HashService` (password hashing), nestjs-pino (logging), helmet + ThrottlerModule (security)
 
-All implementations MUST prioritize:
-
-* Separation of concerns
-* Clean architecture
-* Explicit behavior over implicit magic
-* Consistency across modules
-
----
-
-## ⚙️ Tech Stack (MANDATORY)
-
-The backend is built using:
-
-* NestJS (framework)
-* TypeScript (type safety)
-* Prisma (ORM) via `PrismaService` in `DatabaseModule`
-* JWT (authentication via HTTP-only cookies)
-* class-validator + `@nestjs/swagger` (DTO validation + documentation)
-* bcrypt via `HashService` (password hashing)
-* nestjs-pino (structured logging)
-* helmet + ThrottlerModule (security)
-
----
-
-## 📁 Project Structure (BASE)
+## Project Structure
 
 ```
 src/
   modules/            # Feature-based modules (auth, user, database, health...)
-  common/             # Guards, filters, hash, config, types
+  common/
+    config/           # App-wide config (cookie.config.ts)
+    filters/          # Global exception filters
+    guards/auth/      # BaseJwtGuard, AuthGuard, OptionalAuthGuard, OwnershipGuard, AuthGuardModule
+    hash/             # HashModule + HashService (bcrypt)
+    types/            # Shared types (req-types, query-types)
+    dto/              # Shared DTOs (e.g. pagination)
 ```
 
-### Inside `common/`:
-
-```
-common/
-  config/             # App-wide config (e.g. cookie.config.ts)
-  filters/            # Global exception filters
-  guards/             # Auth guards (BaseJwtGuard, AuthGuard, OptionalAuthGuard, OwnershipGuard)
-  hash/               # HashModule + HashService (bcrypt)
-  types/              # Shared TypeScript types (req-types, query-types)
-  dto/                # Shared DTOs (e.g. pagination)
-```
-
----
-
-## 🧩 Module Structure (FLAT FILES — MANDATORY)
-
-Each feature inside `modules/` MUST follow this **flat file structure**:
+## Module Structure (FLAT FILES — MANDATORY)
 
 ```
 modules/<feature>/
-  <feature>.controller.ts   # HTTP layer
-  <feature>.service.ts      # Business logic
+  <feature>.controller.ts   # HTTP layer (thin — 1-5 lines per method)
+  <feature>.service.ts      # ALL business logic
   <feature>.module.ts       # NestJS module
   dto/                      # Input validation (class-validator + @nestjs/swagger)
+    create-<feature>.dto.ts
+    update-<feature>.dto.ts
 ```
 
-### ⚠️ IMPORTANT
+NO `controllers/` or `services/` subfolders. NO `entities/` folder — output types are inline `Pick<>` in services.
 
-* Do NOT create `controllers/` or `services/` subfolders inside a module
-* Files are flat at the module root: `user.controller.ts`, `user.service.ts`, `user.module.ts`
-* `dto/` IS a subfolder (e.g. `dto/create-user.dto.ts`, `dto/update-user.dto.ts`)
-* There is NO `entities/` folder — output types are defined inline in services using `Pick<>`
-
----
-
-## 🗄️ Database Module
-
-Prisma is encapsulated in a dedicated module:
+## Database Module
 
 ```
 modules/database/
-  database.module.ts
-  prisma.service.ts       # PrismaService extends PrismaClient, implements OnModuleInit
+  database.module.ts        # Exports PrismaService
+  prisma.service.ts         # PrismaService extends PrismaClient, implements OnModuleInit
 ```
 
-`PrismaService` is exported by `DatabaseModule` and injected into feature services.
+There is NO `src/prisma/` folder. Feature modules import `DatabaseModule` to inject `PrismaService`.
 
----
-
-## 🧠 Layer Responsibilities
-
----
-
-### 🎮 Controllers
-
-* Handle HTTP requests
-* Receive and validate DTOs
-* Call services
-* Return responses
-
----
-
-### 🧠 Services
-
-* Contain ALL business logic
-* Orchestrate operations
-* Communicate with PrismaService
-* Handle errors using try/catch + NestJS exceptions
-
----
-
-### 🗄️ PrismaService
-
-* Data access layer only
-* Injected into services via DatabaseModule
-* MUST NOT contain business logic
-
----
-
-### 📦 DTOs
-
-* Define input contracts
-* Use class-validator + `@nestjs/swagger` decorators
-* Enforce validation rules
-
----
-
-## 🔁 Request Flow (MANDATORY)
+## Request Flow (MANDATORY)
 
 ```
 Controller → Service → PrismaService → Database
 ```
 
-### 🚫 FORBIDDEN FLOWS
+FORBIDDEN: Controller→PrismaService ❌ | Controller→business logic ❌ | Service→HTTP logic ❌ | PrismaService→business logic ❌
 
-```
-Controller → PrismaService ❌
-Controller → Business Logic ❌
-Service → HTTP Logic ❌
-```
+## Layer Responsibilities
 
----
+**Controllers**: HTTP transport only. Receive DTOs, call services, return responses. Use `@UseGuards()` for protection. Keep methods 1-5 lines. No business logic, no PrismaService access, no data transformation.
 
-## 🔐 Authentication Strategy
+**Services**: ALL business logic. Orchestrate operations, enforce rules, handle errors via try/catch + NestJS exceptions. Use `Pick<>` for output typing + Prisma `select`. Error messages in pt-BR.
 
-* JWT-based authentication
-* Token stored in HTTP-only cookies via `cookieConfig` (`common/config/cookie.config.ts`)
-* Guards used for route protection (`AuthGuard`, `OptionalAuthGuard`, `OwnershipGuard`)
+**PrismaService**: Data access only. Used ONLY inside services. No business logic.
 
----
+**DTOs**: Input contracts. Validate with class-validator, document with `@nestjs/swagger`. Not used as output models.
 
-## 🧠 Development Principles
+## Development Rules
 
-### ✅ DO
+- Controllers thin, services focused and explicit
+- Validate ALL input via DTOs
+- Error messages in Portuguese (pt-BR)
+- NEVER return sensitive fields (password, tokens) in responses
+- NEVER bypass service layer or access DB in controllers
+- Cross-module communication via injecting other module's service (never their PrismaService)
 
-* Keep controllers thin (1-5 lines per method)
-* Keep services focused and explicit
-* Validate ALL input via DTOs
-* Isolate database access via PrismaService
-* Follow module-based architecture
-* Write error messages in **Portuguese (pt-BR)**
-
-### ❌ DON'T
-
-* Do NOT place business logic in controllers
-* Do NOT access PrismaService outside services
-* Do NOT skip validation
-* Do NOT create tight coupling between modules
-* Do NOT return sensitive fields (password, tokens) in responses
-
----
-
-## 🚫 Strict Prohibitions
-
-Claude MUST NEVER:
-
-* Bypass service layer
-* Access database directly in controllers
-* Skip DTO validation
-* Mix responsibilities across layers
-* Introduce hidden side-effects
-
----
-
-## 🛑 Final Rule
-
-If any implementation:
-
-* Breaks the defined architecture
-* Violates separation of concerns
-* Introduces inconsistency
-
-→ STOP
-→ Refactor to align with backend standards
-
-Clean architecture is **mandatory, not optional**
+Any violation → STOP → Refactor before continuing.

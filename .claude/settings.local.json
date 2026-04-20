@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(rm .claude/rules/client/architecture.md .claude/rules/client/styling.md .claude/rules/client/api.md .claude/rules/client/state.md .claude/rules/client/form.md)",
+      "Bash(rm .claude/rules/server/architecture.md .claude/rules/server/dto.md .claude/rules/server/validation.md .claude/rules/server/errors.md .claude/rules/server/prisma.md .claude/rules/server/guards.md .claude/rules/server/security.md)",
+      "Bash(wc -l .claude/rules/client/*.md .claude/rules/server/*.md)",
+      "Bash(done)",
+      "Bash(bc)",
+      "Bash(find client/src -type f ! -path */node_modules/*)",
+      "Bash(pnpm remove:*)",
+      "Bash(npx tsc:*)",
+      "Bash(pnpm dev:*)",
+      "Bash(for dir:*)",
+      "Bash(do touch:*)",
+      "Bash(pnpm --filter client build)",
+      "Bash(pnpm --filter server build)",
+      "Bash(pnpm --filter app-name build)"
+    ]
+  }
+}

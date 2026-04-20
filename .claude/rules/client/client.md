@@ -1,215 +1,114 @@
-# 🖥️ Frontend Overview (Client Rules)
-
-## 🎯 Objective
-
-Provide a high-level definition of the frontend architecture, stack, and general rules.
-
-This document acts as the **global context** for all other client rules.
-
-Claude MUST read and follow this before applying any other rule files.
-
+---
+globs: client/**
 ---
 
-## 🧠 Core Philosophy
+# Frontend Rules
 
-This frontend is built to be:
+## Tech Stack
 
-* Scalable
-* Predictable
-* Modular
-* Clean and maintainable
+- React 19, TypeScript, Tailwind CSS v4 (ONLY styling — via `@tailwindcss/vite`), React Router v7
+- TanStack Query v5 (server state), Axios (HTTP client)
+- React Hook Form v7 + Zod v4 (forms via `zodResolver`), React Hot Toast (notifications)
+- Phosphor Icons (`@phosphor-icons/react`), Custom font: `Outfit`
+- Dark mode: `darkMode: 'class'` (toggle in `shared/contexts/themeContext`)
 
-All implementations MUST prioritize:
-
-* Readability over cleverness
-* Consistency over personal preference
-* Simplicity over unnecessary complexity
-
----
-
-## ⚙️ Tech Stack (MANDATORY)
-
-The project is built using:
-
-* React 19 (UI library)
-* TypeScript (type safety)
-* Tailwind CSS v4 (styling — ONLY method)
-* React Router v7 (routing)
-* TanStack Query v5 (server state)
-* Axios (HTTP client)
-* React Hook Form v7 + Zod v4 (forms)
-* React Hot Toast (notifications)
-* Phosphor Icons (`@phosphor-icons/react`)
-
----
-
-## 📁 Project Structure (BASE)
+## Project Structure
 
 ```
 src/
-  pages/        # Route-level components (no business logic)
-  modules/      # Feature-based architecture
-  shared/       # Global reusable code
-  api/          # HTTP client configuration
+  pages/          # Route-level — layout composition + module hooks only
+  modules/        # Feature-based architecture
+  shared/         # Global reusable code
+  api/            # HTTP client config (axios instance + interceptors)
 ```
 
----
-
-## 🧩 Module Structure (MANDATORY)
-
-Each feature inside `modules/` MUST follow **exactly** this structure:
+## Module Structure (MANDATORY — exact names)
 
 ```
 modules/<feature>/
-  components/     # UI specific to the feature
-  hooks/          # State + business logic (TanStack Query)
-  service/        # API calls (one file per action)
-  types/          # TypeScript types + Zod schemas
-  skeletons/      # Loading skeleton components
+  components/     # Feature UI components
+  hooks/          # TanStack Query hooks + logic
+  service/        # API functions (ONE file per action) — NEVER `services/`
+  types/          # TypeScript types + Zod schemas — NEVER `schemas/`
+  skeletons/      # Loading skeletons (MANDATORY for every module)
+  contexts/       # (optional) Feature-specific contexts
+  config/         # (optional) Feature-specific constants
 ```
 
-Optional (when needed):
-
-```
-  contexts/       # Feature-specific React contexts
-  config/         # Feature-specific constants/config
-```
-
-### ⚠️ IMPORTANT
-
-* The service folder is `service/` (singular) — NOT `services/`
-* There is NO `schemas/` folder — Zod schemas live inside `types/`
-* Every module MUST have a `skeletons/` folder for async components
-
----
-
-## 🔁 Shared Structure
+## Shared Structure
 
 ```
 shared/
-  components/     # Reusable UI components (Input, Spinner, Toast, etc.)
-  hooks/          # Generic hooks (useNavigateTo, etc.)
+  components/     # Reusable UI (Input, Spinner, Toast, ToggleTheme, ErrorMessage...)
+  hooks/          # Generic hooks (useNavigateTo, useFindMe...)
   contexts/       # Global contexts (userContext, themeContext)
   layouts/        # Layout components (Header, Sidebar, BottomNav, Content)
-  services/       # Global services (e.g. findMeService)
+  services/       # Global services (findMeService, etc.)
   utils/          # Pure utility functions
 ```
 
----
+Used in 2+ modules → `shared/`. Shared MUST NOT import from modules. No business logic in shared.
 
-## 🌐 API Layer
+## API Layer (`src/api/`)
+
+- `axios.ts` — configured axios instance (base URL, headers, defaults)
+- `interceptors/` — axios interceptors (e.g. forbidden-interceptor.ts)
+- Infrastructure only — no domain knowledge, no feature functions, no business logic
+
+## Pages Layer
+
+Pages orchestrate, NOT implement. Compose components from modules + call module hooks.
+FORBIDDEN: business logic, direct API calls, creating components, complex state.
+
+## Data Flow (STRICT)
 
 ```
-api/
-  axios.ts              # Configured axios instance
-  interceptors/         # Axios interceptors (auth, errors)
+UI (Component/Page) → Hook (TanStack Query) → Service function → api/axios
 ```
 
----
+FORBIDDEN: Component→service ❌ | Component→axios ❌ | Hook→axios ❌ | Page→service ❌ | shared→modules ❌ | modules→pages ❌
 
-## 📄 Pages Layer
-
-### ✅ RESPONSIBILITY
-
-* Route mapping
-* Layout composition
-* Calling module hooks
-
-### ❌ FORBIDDEN
-
-* Business logic
-* Direct API calls
-* Complex state handling
-* Creating components here
-
----
-
-## 📦 Libraries & Responsibilities
-
-### 🔄 TanStack Query v5
-
-* Handles ALL server state (API data)
-* Used inside hooks ONLY
-* Responsible for: caching, fetching, refetching, synchronization
-* Syntax: `useQuery({ queryKey, queryFn })` / `useMutation({ mutationFn })`
-
-### 🧭 React Router v7
-
-* Handles routing
-* Pages are mapped to routes
-* No business logic inside routes
-
-### 🎨 Tailwind CSS v4
-
-* ONLY styling solution
-* Use classes directly in JSX
-* Config via `@tailwindcss/vite` plugin
-
-### 📋 React Hook Form v7 + Zod v4
-
-* All forms use React Hook Form with `zodResolver`
-* Zod schemas defined in `modules/<feature>/types/`
-
----
-
-## 🔁 Data & State Strategy
-
-### 🧠 Server State (API Data)
-
-Handled by **TanStack Query** in hooks:
-
-* `useQuery` for fetching (GET)
-* `useMutation` for mutations (POST/PATCH/DELETE)
-* Hooks call service functions
-
-### 🧩 Client State (UI / Local)
-
-Handled by:
-
-* `useState` — UI-only state (modals, toggles)
-* React Context — global state (auth user, theme)
-
-### ⚠️ Rule
-
-Do NOT mix server state and client state responsibilities
-
----
-
-## 🏷️ Naming Conventions (MANDATORY)
+## Naming Conventions
 
 | Type | Pattern | Example |
 |------|---------|---------|
-| Component | `PascalCase.tsx` | `LoginForm.tsx` |
-| Hook | `use[Action][Entity].ts` | `useCreateFeature.ts`, `useGetUser.ts` |
-| Service file | `[action][Entity]Service.ts` | `createFeatureService.ts`, `getUserService.ts` |
-| Type file | `[action\|entity].ts` | `createFeature.ts`, `feature.ts` |
+| Component | `PascalCase.tsx` | `FeatureCard.tsx` |
+| Hook | `use[Action][Entity].ts` | `useCreateFeature.ts` |
+| Service | `[action][Entity]Service.ts` | `createFeatureService.ts` |
+| Type | `[entity\|action].ts` | `feature.ts`, `createFeature.ts` |
 | Skeleton | `[Feature]Skeleton.tsx` | `FeatureSkeleton.tsx` |
 
----
+## State Strategy
 
-## 🚫 Strict Prohibitions
+| Type | Tool | Where |
+|------|------|-------|
+| Server data | TanStack Query (`useQuery`/`useMutation`) | `modules/<feature>/hooks/` |
+| UI-only (modals, toggles) | `useState` | Component level |
+| Global (auth, theme) | React Context | `shared/contexts/` |
+| Forms | React Hook Form + Zod | hooks/ + types/ |
 
-Claude MUST NEVER:
+NEVER: `useState+useEffect` for server data | API data in `useState` | Context for feature data | mix server/client state.
 
-* Create logic inside pages
-* Call APIs directly in components
-* Use `services/` (plural) — always `service/` (singular)
-* Create a `schemas/` folder — Zod goes in `types/`
-* Mix styling approaches (Tailwind only)
-* Ignore TypeScript typing
-* Break module boundaries
+## Styling (Tailwind v4 ONLY)
 
----
+- Classes directly in JSX — NO `style={{}}`, NO styled-components, NO .css/.scss
+- Rounded: `rounded-xl`/`rounded-2xl` | Shadows: `shadow-sm`/`shadow-md`
+- Borders: `border border-neutral-200 dark:border-neutral-700`
+- Interactions: `hover:bg-neutral-100 transition-all duration-200`
+- Always `dark:` variants for bg, text, borders
+- Spacing: `p-4`, `p-6`, `gap-4`, `gap-6` — whitespace over clutter
+- Typography: intentional sizes (`text-sm`→`text-xl`) + weights (`font-medium`→`font-bold`)
+- Notifications: React Hot Toast
+- Quality: modern, minimal, SaaS-level — never generic/template-looking
 
-## 🛑 Final Rule
+## Anti-Patterns (FORBIDDEN)
 
-If any implementation:
+- Logic inside pages/JSX, God components, prop drilling
+- Direct API usage outside service layer
+- `services/` (must be `service/`), `schemas/` (must be `types/`), missing `skeletons/`
+- `useState` for server data or forms
+- Mixing styling approaches, inline styles
+- Duplicated logic across modules
+- Components coupled to specific data formats
 
-* Breaks the defined structure
-* Ignores existing patterns
-* Introduces inconsistency
-
-→ STOP
-→ Refactor to align with project standards
-
-Consistency is **mandatory, not optional**
+Any violation → STOP → Refactor before continuing.

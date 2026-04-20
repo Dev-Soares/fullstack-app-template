@@ -1,45 +1,21 @@
-# 🔐 Authentication Rules
-
-## 🎯 Objective
-
-Define strict rules for authentication and authorization.
-
-The goal is to ensure:
-
-* Secure authentication flow
-* Consistent user handling
-* Safe token management
-
-Claude MUST follow these rules strictly.
-
+---
+globs: server/**
 ---
 
-## 🧠 Core Principle
+# Authentication, Guards & Security Rules
 
-Authentication MUST be:
+## Auth Strategy
 
-* Secure
-* Stateless (JWT-based)
-* Isolated from business logic
+JWT-based, stateless. Token in HTTP-only cookies. NO passport/passport-jwt.
 
----
-
-## 🔑 Auth Strategy
-
-* JWT-based authentication via `@nestjs/jwt` (NOT passport/passport-jwt)
-* Token stored in HTTP-only cookies
-* Guards used to protect routes (`AuthGuard`, `OptionalAuthGuard`, `OwnershipGuard`)
-
----
-
-## 🔁 Auth Flow (MANDATORY)
+## Auth Flow
 
 ```
 POST /auth/login
   → AuthController receives SignInDto
   → AuthService.signIn(email, password)
-      → UserService.findByEmailWithPassword(email)  [gets user with password hash]
-      → HashService.comparePassword(plain, hash)    [bcrypt compare]
+      → UserService.findByEmailWithPassword(email)
+      → HashService.comparePassword(plain, hash)
       → if invalid → throw UnauthorizedException('E-mail ou senha inválidos')
       → jwtService.signAsync({ sub: user.id, name: user.name })
       → return { access_token }
@@ -51,42 +27,27 @@ POST /auth/logout
   → return { message: 'Logged out' }
 ```
 
----
+## Module Responsibilities
 
-## 🧩 Module Responsibilities
+**AuthService**: validate credentials (email+password), generate JWT via `jwtService.signAsync()`, return `{ access_token }`. Does NOT set cookies.
 
-### `AuthService`
+**AuthController**: receives `SignInDto`, calls `authService.signIn()`, sets/clears cookie via `@Res({ passthrough: true })`, returns `{ message }`.
 
-* Validate user credentials (email + password)
-* Generate JWT via `jwtService.signAsync()`
-* Return `{ access_token }` to the controller
-* Does NOT set cookies (controller handles that)
+**HashService** (`common/hash/`): `hashPassword(plain)` and `comparePassword(plain, hash)` via bcrypt. Used by `UserService` (create/update) and `AuthService` (login). NEVER implement bcrypt directly in services.
 
-### `AuthController`
-
-* Receives `SignInDto`
-* Calls `authService.signIn()`
-* Sets/clears the cookie using `@Res({ passthrough: true })`
-* Returns a simple `{ message }` response
-
-### `HashService` (in `common/hash/`)
-
-* `hashPassword(plain: string): Promise<string>` — bcrypt hash
-* `comparePassword(plain: string, hash: string): Promise<boolean>` — bcrypt compare
-* Used by `UserService` (on create/update) and `AuthService` (on login)
-
----
-
-## 🍪 Cookie Configuration (MANDATORY)
-
-Cookies MUST use the shared `cookieConfig` from `src/common/config/cookie.config.ts`:
+## JWT Payload (minimal)
 
 ```typescript
-// common/config/cookie.config.ts
-import type { CookieOptions } from 'express'
+const payload = { sub: user.id, name: user.name }
+```
 
-const isProduction = process.env.NODE_ENV === 'production'
+NEVER include sensitive data (password, email, roles) in JWT.
 
+## Cookie Config (MANDATORY)
+
+Import from `src/common/config/cookie.config.ts`:
+
+```typescript
 export const cookieConfig: CookieOptions = {
   httpOnly: true,
   secure: isProduction,
@@ -95,120 +56,93 @@ export const cookieConfig: CookieOptions = {
 }
 ```
 
-### ✅ DO
-
-* Import `cookieConfig` and use it for both `res.cookie()` and `res.clearCookie()`
-* Use `@Res({ passthrough: true })` in auth controller methods — NOT `@Res()` alone
-
-### ❌ DON'T
-
-* Do NOT hardcode cookie options inline
-* Do NOT use `@Res()` without `passthrough: true` (breaks NestJS interceptors)
-* Do NOT store tokens in `localStorage` or response body
+Always use `cookieConfig` for both `res.cookie()` and `res.clearCookie()`. Use `@Res({ passthrough: true })` — NEVER `@Res()` alone. NEVER hardcode cookie options. NEVER store tokens in localStorage or response body.
 
 ---
 
-## 🔐 Cookie Handling in Controller
+## Guards
+
+Location: `src/common/guards/auth/`
+
+### BaseJwtGuard (abstract)
+
+Shared JWT verification logic. `AuthGuard` and `OptionalAuthGuard` extend this.
 
 ```typescript
-import { cookieConfig } from 'src/common/config/cookie.config'
-import type { Response } from 'express'
-
-@Post('login')
-@HttpCode(HttpStatus.OK)
-async signIn(
-  @Body() dto: SignInDto,
-  @Res({ passthrough: true }) res: Response,
-): Promise<{ message: string }> {
-  const result = await this.authService.signIn(dto.email, dto.password)
-  res.cookie('access_token', result.access_token, cookieConfig)
-  return { message: 'Sign In successful' }
-}
-
-@Post('logout')
-logout(@Res({ passthrough: true }) res: Response): { message: string } {
-  res.clearCookie('access_token', cookieConfig)
-  return { message: 'Logged out' }
+protected verifyToken(token: string): Promise<RequestTokenPayload> {
+  return this.jwtService.verifyAsync(token, {
+    secret: this.configService.get<string>('JWT_SECRET'),
+  })
 }
 ```
 
----
+### AuthGuard (requires authentication)
 
-## 🧾 JWT Payload
+Reads `access_token` from cookies. Throws `UnauthorizedException` if missing/expired/invalid. Sets `request.user = { sub, name }`.
 
-The JWT payload MUST be minimal:
+### OptionalAuthGuard (optional authentication)
 
-```typescript
-const payload = { sub: user.id, name: user.name }
-const token = await this.jwtService.signAsync(payload)
-```
+Never throws. Sets `request.user = null` if no token or invalid. Use for routes that work for both authenticated and unauthenticated users.
 
-### ✅ DO
+### OwnershipGuard (resource ownership)
 
-* Keep payload minimal: `{ sub: user.id, name: user.name }`
-* Use `sub` for the user ID (JWT standard claim)
-
-### ❌ DON'T
-
-* Do NOT include sensitive data (password, email, roles) in the JWT payload
-* Do NOT add unnecessary fields to the payload
-
----
-
-## 🔐 Password Handling
-
-### ✅ DO
-
-* Hash passwords with `HashService.hashPassword()` before saving
-* Compare with `HashService.comparePassword()` during login
-* Use strong bcrypt salt rounds (configured in `HashService`)
-
-### ❌ DON'T
-
-* Do NOT store plain text passwords
-* Do NOT log passwords anywhere
-* Do NOT implement bcrypt directly in services — use `HashService`
-
----
-
-## 🔐 Route Protection
+Compares `request.user.sub` with `request.params.id`. Throws `ForbiddenException` if mismatch. MUST always be used WITH `AuthGuard`:
 
 ```typescript
-@UseGuards(AuthGuard)            // authenticated users only
-@UseGuards(OptionalAuthGuard)    // works with or without auth
-@UseGuards(AuthGuard, OwnershipGuard)  // authenticated + must own the resource
+@UseGuards(AuthGuard, OwnershipGuard)  // correct order
 ```
 
-### ❌ DON'T
+### Usage
 
-* Do NOT manually check auth inside services or controllers
-* Do NOT parse or verify tokens manually
+```typescript
+@UseGuards(AuthGuard)                    // authenticated only
+@UseGuards(OptionalAuthGuard)            // optional auth
+@UseGuards(AuthGuard, OwnershipGuard)    // authenticated + owner
+```
+
+Request types from `src/common/types/req-types`: `AuthenticatedRequest` (user guaranteed), `OptionalAuthRequest` (user may be null).
+
+Feature modules import `AuthGuardModule` to use guards.
+
+### Guard Rules
+
+- NEVER implement auth logic manually in controllers/services
+- NEVER create new JWT guards from scratch — extend `BaseJwtGuard`
+- NEVER use `OwnershipGuard` without `AuthGuard`
+- NEVER duplicate guard logic
 
 ---
 
-## 🚫 Anti-Patterns
+## Security Rules
 
-Claude MUST avoid:
+### Password
 
-* Manual auth logic in controllers
-* Token in localStorage or response body
-* Hardcoded cookie options (use `cookieConfig`)
-* Weak password handling
-* Skipping guards on protected routes
-* Using passport / passport-jwt (not used in this project)
-* JWT payload with sensitive data
+- Hash with `HashService.hashPassword()` before saving. Compare with `HashService.comparePassword()`. Strong bcrypt salt
+- NEVER store/log plain passwords
 
----
+### Input
 
-## 🛑 Final Rule
+- Validate ALL inputs via DTOs with `whitelist: true`, `forbidNonWhitelisted: true`
+- NEVER trust client input, NEVER allow unknown fields
 
-If authentication is:
+### Database
 
-* Insecure
-* Inconsistent
-* Handled manually outside the defined flow
+- Prisma prevents SQL injection. Always exclude sensitive fields via `select`
+- NEVER expose internal data structures
 
-→ STOP
-→ Refactor immediately
+### API
 
-Security is **non-negotiable**
+- Use guards for protected routes. Restrict access properly
+- Protect sensitive endpoints (login, auth) with rate limiting
+
+### Logging
+
+- Log important actions (auth, errors). NEVER log sensitive data
+
+### Must Prevent
+
+XSS, injection attacks, broken auth flows, data leaks, insecure storage.
+
+Principle of least privilege — grant only necessary access.
+
+Security is NON-NEGOTIABLE. Any risk → STOP → Refactor immediately.

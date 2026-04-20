@@ -1,62 +1,34 @@
-# 🧩 Components Rules
-
-## 🎯 Objective
-
-Define strict rules for how components must be created, structured, and organized.
-
-The goal is to ensure:
-
-* Reusability
-* Readability
-* Separation of concerns
-* Zero duplication
-
-Claude MUST follow these rules when creating or editing components.
-
+---
+globs: client/**
 ---
 
-## 📁 Component Location Rules
+# Components & Forms Rules
 
-There are ONLY two valid locations for components:
+## Component Location
 
-1. `shared/components/` → reusable across 2+ features
-2. `modules/<feature>/components/` → feature-specific
-
-### ⚠️ Decision Rule
-
-| Scenario | Where it goes |
-|----------|---------------|
+| Scenario | Location |
+|----------|----------|
 | Used in 1 feature | `modules/<feature>/components/` |
 | Used in 2+ features | `shared/components/` |
-| Page layout only | inline in `pages/` (no extraction needed) |
+| Page layout only | inline in `pages/` |
 
-### ❌ DON'T
+NEVER create components inside `pages/`. One component per file.
 
-* Do NOT create components inside `pages/`
-* Do NOT mix shared and feature logic
-* Do NOT create "random" component folders
+## Component Responsibility
 
----
+- Single responsibility per component. Split at >150-200 lines
+- Move ALL logic to hooks — keep components declarative
+- Use props to receive data/actions. Strongly type all props (no `any`)
+- If props become too complex → split component or move logic to hook
 
-## 🦴 Skeleton Components (MANDATORY)
+## File Structure
 
-Every module MUST have a `skeletons/` folder with loading skeleton components for each async component:
+Simple: `ComponentName.tsx`
+Complex: `ComponentName/index.tsx` + optional `types.ts`
 
-```
-modules/<feature>/
-  components/
-    FeatureCard.tsx
-  skeletons/
-    FeatureSkeleton.tsx     # Skeleton for FeatureCard while loading
-```
+## Skeleton Components (MANDATORY)
 
-### ✅ DO
-
-* Create a skeleton for every component that loads async data
-* Use Tailwind `animate-pulse` for skeleton animation
-* Match the skeleton layout to the real component's layout
-
-### 💡 Example
+Every module MUST have `skeletons/` with loading skeletons for async components:
 
 ```typescript
 // modules/feature/skeletons/FeatureSkeleton.tsx
@@ -67,150 +39,12 @@ const FeatureSkeleton = () => (
     <div className="h-3 w-4/5 rounded bg-neutral-200 dark:bg-neutral-700" />
   </div>
 )
-
 export default FeatureSkeleton
 ```
 
-### Usage in component with TanStack Query
+Match skeleton layout to real component. Use `animate-pulse`.
 
-```typescript
-const { data, isPending } = useGetFeature(id)
-
-if (isPending) return <FeatureSkeleton />
-```
-
----
-
-## 🧠 Component Responsibility
-
-Each component MUST have a **single responsibility**.
-
-### ✅ DO
-
-* Keep components small and focused
-* Split components when they grow too large (>150-200 lines)
-* Separate logic from presentation
-
-### ❌ DON'T
-
-* Do NOT create "God components"
-* Do NOT handle multiple responsibilities in one component
-
----
-
-## 🔌 Logic vs UI Separation
-
-### ✅ DO
-
-* Move all logic to hooks (`modules/.../hooks/`)
-* Keep components declarative
-* Use props to receive data and actions from hooks
-
-### ❌ DON'T
-
-* Do NOT embed complex logic inside JSX
-* Do NOT fetch data directly inside components
-* Do NOT call service functions from components
-
----
-
-## 🏷️ Naming Conventions
-
-| Type | Pattern | Example |
-|------|---------|---------|
-| Component | `PascalCase.tsx` | `FeatureCard.tsx`, `LoginForm.tsx` |
-| Skeleton | `[Name]Skeleton.tsx` | `FeatureSkeleton.tsx`, `ProfileSkeleton.tsx` |
-
-One component per file — always.
-
----
-
-## 🧱 Component File Structure
-
-For simple components: single file `ComponentName.tsx`
-
-For complex components: folder pattern
-
-```
-ComponentName/
-  index.tsx
-  types.ts      (optional — local prop types)
-```
-
----
-
-## 🧾 Props Rules
-
-### ✅ DO
-
-* Strongly type all props with TypeScript
-* Keep props minimal and clear
-* Use explicit, descriptive names
-
-### ❌ DON'T
-
-* Do NOT pass unnecessary props
-* Do NOT use deeply nested prop chains (prop drilling)
-* Do NOT use `any` for prop types
-
-### ⚠️ Decision Rule
-
-If props become too complex → split the component or move logic to a hook
-
----
-
-## 🎨 Styling Rules
-
-### ✅ DO
-
-* Use Tailwind classes directly in JSX
-* Keep styling consistent with design system
-
-### ❌ DON'T
-
-* Do NOT use inline `style={{}}` objects
-* Do NOT mix CSS frameworks or files
-* Do NOT use styled-components
-
----
-
-## 🔁 Reusability Rules
-
-### ✅ DO
-
-* Design shared components to be flexible and configurable via props
-* Use composition over duplication
-
-### ❌ DON'T
-
-* Do NOT duplicate components across modules
-* Do NOT hardcode feature-specific logic in shared components
-
----
-
-## 📦 Shared Component Standards
-
-Shared components MUST be:
-
-* Generic (no feature-specific data)
-* Configurable via props
-* Stateless (or minimally stateful for UI only)
-* Independent from modules
-
-### ❌ STRICTLY FORBIDDEN
-
-* Shared components importing from modules
-* Shared components containing business logic
-
----
-
-## 🧪 Conditional Rendering
-
-### ✅ DO
-
-* Show skeletons while `isPending`
-* Show error states when `isError`
-* Keep conditions clean and readable
+## Conditional Rendering
 
 ```typescript
 if (isPending) return <FeatureSkeleton />
@@ -218,36 +52,96 @@ if (isError) return <ErrorMessage />
 return <FeatureCard data={data} />
 ```
 
-### ❌ DON'T
+Keep conditions clean — no complex ternaries inline in JSX.
 
-* Do NOT write complex ternaries inline in JSX
-* Do NOT clutter JSX with logic
+## Shared Components
 
----
+Must be: generic (no feature data), configurable via props, stateless or UI-only state, independent from modules. NEVER import from modules. NEVER contain business logic.
 
-## ⚠️ Anti-Patterns
+## Styling
 
-Claude MUST avoid:
-
-* Components with multiple responsibilities
-* Logic-heavy JSX
-* Copy-paste components across modules
-* Components tightly coupled to specific data formats
-* Deeply nested JSX without abstraction
-* Missing skeleton components for async content
-* Calling service functions directly from components
+Tailwind classes directly in JSX. No `style={{}}`, no styled-components, no CSS files.
 
 ---
 
-## 🛑 Final Rule
+# Forms (Zod + React Hook Form + zodResolver — MANDATORY)
 
-If a component becomes:
+## Schema + Type (in `modules/<feature>/types/`)
 
-* Too large (>150-200 lines)
-* Hard to read
-* Hard to reuse
+Zod schema IS the single source of truth. Export schema + inferred type from same file. NO `schemas/` folder. NO duplicate interfaces.
 
-→ STOP
-→ Refactor into smaller components or move logic to hooks
+```typescript
+// modules/auth/types/signIn.ts
+import { z } from 'zod'
 
-Clean components are **mandatory, not optional**
+export const signInSchema = z.object({
+  email: z.string().email('E-mail inválido'),
+  password: z.string().min(8, 'A senha deve ter no mínimo 8 caracteres'),
+})
+
+export type SignInData = z.infer<typeof signInSchema>
+```
+
+## Form Hook (in `modules/<feature>/hooks/`)
+
+```typescript
+// modules/auth/hooks/useSignIn.ts
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { useMutation } from '@tanstack/react-query'
+import { signInSchema, type SignInData } from '../types/signIn'
+import { signInService } from '../service/signInService'
+
+export const useSignIn = () => {
+  const form = useForm<SignInData>({
+    resolver: zodResolver(signInSchema),
+  })
+
+  const mutation = useMutation({
+    mutationFn: (data: SignInData) => signInService(data),
+  })
+
+  const onSubmit = form.handleSubmit((data) => mutation.mutate(data))
+
+  return { ...form, onSubmit, isPending: mutation.isPending }
+}
+```
+
+## Form Component (in `modules/<feature>/components/`)
+
+```typescript
+// modules/auth/components/LoginForm.tsx
+import { useSignIn } from '../hooks/useSignIn'
+
+const LoginForm = () => {
+  const { register, onSubmit, formState: { errors }, isPending } = useSignIn()
+
+  return (
+    <form onSubmit={onSubmit} className="flex flex-col gap-4">
+      <div>
+        <input {...register('email')} placeholder="E-mail" />
+        {errors.email && <span>{errors.email.message}</span>}
+      </div>
+      <div>
+        <input type="password" {...register('password')} placeholder="Senha" />
+        {errors.password && <span>{errors.password.message}</span>}
+      </div>
+      <button type="submit" disabled={isPending}>
+        {isPending ? 'Entrando...' : 'Entrar'}
+      </button>
+    </form>
+  )
+}
+```
+
+## Form Rules
+
+- Use `register` (uncontrolled) by default. `Controller` only for custom inputs without `ref` support
+- NEVER: `useState` for form state | schema in component/hook | API calls in form components | duplicate interfaces alongside Zod types
+- Reusable inputs (Input, PasswordInput) → `shared/components/`
+
+## Form Data Flow
+
+```
+User Input → React Hook Form → Zod (zodResolver) → Hook onSubmit → TanStack mutation → Service → API
+```

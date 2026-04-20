@@ -1,171 +1,16 @@
-# 🎮 Controllers Rules
-
-## 🎯 Objective
-
-Define strict rules for controller layer implementation.
-
-The goal is to ensure:
-
-* Thin and predictable controllers
-* Clear separation from business logic
-* Clean and consistent request handling
-
-Claude MUST follow these rules strictly.
-
+---
+globs: server/**
 ---
 
-## 🧠 Core Principle
+# Controllers & DTOs Rules
 
-Controller = **transport layer only**
+## Controller Location
 
----
+`modules/<feature>/<feature>.controller.ts` — flat file at module root, NOT in `controllers/` subfolder.
 
-## 📁 Location (FLAT — MANDATORY)
+## Controller Pattern
 
-```
-modules/<feature>/<feature>.controller.ts
-```
-
-### ✅ Correct
-
-```
-modules/user/user.controller.ts
-modules/auth/auth.controller.ts
-```
-
-### ❌ Wrong
-
-```
-modules/user/controllers/user.controller.ts   ❌
-```
-
-Controllers are flat files at the module root, NOT in a `controllers/` subfolder.
-
----
-
-## 🧩 Responsibilities
-
-Controllers MUST:
-
-* Handle HTTP requests
-* Receive and validate DTOs
-* Call service methods
-* Return responses
-
----
-
-## ❌ Forbidden Responsibilities
-
-Controllers MUST NOT:
-
-* Contain business logic
-* Access PrismaService
-* Make decisions based on business rules
-* Handle complex data transformations
-* Contain reusable logic
-
----
-
-## 🔁 Request Handling Pattern
-
-Each controller method MUST follow:
-
-```typescript
-@HttpMethod()
-async methodName(@Body() dto: SomeDto) {
-  return this.service.someMethod(dto)
-}
-```
-
-Keep methods to **1-5 lines maximum**. If logic appears → move to service.
-
----
-
-## 🧾 DTO Usage (MANDATORY)
-
-### ✅ DO
-
-* Use DTOs for ALL inputs
-* Use decorators: `@Body()`, `@Param()`, `@Query()`
-* Use `@UseGuards()` for protected routes
-* Use `@Req()` only to read `req.user` (set by guards) — never to parse tokens manually
-
-### ❌ DON'T
-
-* Do NOT accept raw objects
-* Do NOT skip validation
-* Do NOT decode tokens manually in controllers
-
----
-
-## 🍪 Cookie Handling (Auth Routes Only)
-
-For auth routes that set/clear cookies, use `@Res({ passthrough: true })`:
-
-```typescript
-@Post('login')
-async signIn(
-  @Body() dto: SignInDto,
-  @Res({ passthrough: true }) res: Response,
-): Promise<{ message: string }> {
-  const result = await this.authService.signIn(dto.email, dto.password)
-  res.cookie('access_token', result.access_token, cookieConfig)
-  return { message: 'Sign In successful' }
-}
-
-@Post('logout')
-logout(@Res({ passthrough: true }) res: Response): { message: string } {
-  res.clearCookie('access_token', cookieConfig)
-  return { message: 'Logged out' }
-}
-```
-
-* Import `cookieConfig` from `src/common/config/cookie.config`
-* `passthrough: true` is mandatory to keep NestJS interceptors working
-
----
-
-## 🔐 Guard Usage
-
-```typescript
-@UseGuards(AuthGuard)           // requires authenticated user
-@UseGuards(OptionalAuthGuard)   // user may or may not be authenticated
-@UseGuards(AuthGuard, OwnershipGuard)  // authenticated + must be resource owner
-```
-
-Access the request user via `@Req() req: AuthenticatedRequest` (set by guard):
-
-```typescript
-@UseGuards(OptionalAuthGuard)
-@Get('me')
-async findMe(@Req() req: OptionalAuthRequest) {
-  if (!req.user) return null
-  return this.userService.findOne(req.user.sub)
-}
-```
-
----
-
-## 🧩 Naming Conventions
-
-### ✅ DO
-
-Use clear RESTful naming:
-
-* `create`
-* `findAll`
-* `findOne`
-* `update`
-* `remove`
-* Custom names when semantically necessary: `findMe`, `signIn`, `logout`
-
-### ❌ DON'T
-
-* Do NOT use vague names like `handle`, `process`
-
----
-
-## 🧩 Example (CORRECT)
+Each method: receive DTO → call service → return response. Max 1-5 lines.
 
 ```typescript
 @Controller('user')
@@ -183,45 +28,122 @@ export class UserController {
     return this.userService.findOne(id)
   }
 
-  @Patch(':id')
   @UseGuards(AuthGuard, OwnershipGuard)
+  @Patch(':id')
   update(@Param('id') id: string, @Body() dto: UpdateUserDto) {
     return this.userService.update(id, dto)
   }
 
-  @Delete(':id')
   @UseGuards(AuthGuard, OwnershipGuard)
+  @Delete(':id')
   remove(@Param('id') id: string) {
     return this.userService.remove(id)
   }
 }
 ```
 
+## Controller Rules
+
+- Use DTOs for ALL inputs via `@Body()`, `@Param()`, `@Query()`
+- Use `@UseGuards()` for protected routes
+- Use `@Req()` only to read `req.user` (set by guards) — never parse tokens manually
+- RESTful naming: `create`, `findAll`, `findOne`, `update`, `remove` (or semantic: `findMe`, `signIn`, `logout`)
+- FORBIDDEN: business logic, PrismaService access, complex data transformation, manual validation
+
+## Cookie Handling (Auth Routes Only)
+
+Use `@Res({ passthrough: true })` — `passthrough: true` is mandatory (keeps NestJS interceptors working):
+
+```typescript
+@Post('login')
+@HttpCode(HttpStatus.OK)
+async signIn(@Body() dto: SignInDto, @Res({ passthrough: true }) res: Response) {
+  const result = await this.authService.signIn(dto.email, dto.password)
+  res.cookie('access_token', result.access_token, cookieConfig)
+  return { message: 'Sign In successful' }
+}
+```
+
+Import `cookieConfig` from `src/common/config/cookie.config`. NEVER hardcode cookie options.
+
+## Guard Usage
+
+```typescript
+@UseGuards(AuthGuard)                    // requires authenticated user
+@UseGuards(OptionalAuthGuard)            // works with or without auth
+@UseGuards(AuthGuard, OwnershipGuard)    // authenticated + resource owner
+```
+
+Access user: `@Req() req: AuthenticatedRequest` or `OptionalAuthRequest` (from `src/common/types/req-types`).
+
 ---
 
-## ⚠️ Anti-Patterns
+# DTOs
 
-Claude MUST avoid:
+## Location
 
-* Fat controllers
-* Business logic inside controllers
-* Direct database access
-* Manual validation (global `ValidationPipe` handles it)
-* Complex conditionals
-* Hidden side-effects
-* `controllers/` subfolder inside modules
+`modules/<feature>/dto/create-<feature>.dto.ts`, `update-<feature>.dto.ts`
 
----
+## Validation (MANDATORY)
 
-## 🛑 Final Rule
+Every field MUST have both class-validator AND `@nestjs/swagger` decorators. `@IsNotEmpty()` always combined with type validator.
 
-If a controller:
+### Create DTO
 
-* Contains logic
-* Accesses database
-* Becomes large or complex
+```typescript
+import { ApiProperty } from '@nestjs/swagger'
+import { IsEmail, IsNotEmpty, IsString, MinLength, MaxLength } from 'class-validator'
 
-→ STOP
-→ Refactor into service layer
+export class CreateUserDto {
+  @ApiProperty({ example: 'user@email.com' })
+  @IsEmail()
+  @IsNotEmpty()
+  email: string
 
-Controllers MUST remain **thin, clean, and predictable**
+  @ApiProperty({ example: 'strongPassword123' })
+  @IsString()
+  @IsNotEmpty()
+  @MinLength(8, { message: 'A senha deve ter no mínimo 8 caracteres' })
+  password: string
+
+  @ApiProperty({ example: 'John Doe' })
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(100)
+  name: string
+}
+```
+
+### Update DTO (all optional)
+
+```typescript
+import { ApiPropertyOptional } from '@nestjs/swagger'
+import { IsEmail, IsOptional, IsString, MaxLength } from 'class-validator'
+
+export class UpdateUserDto {
+  @ApiPropertyOptional({ example: 'John Doe' })
+  @IsString()
+  @IsOptional()
+  @MaxLength(100)
+  name?: string
+
+  @ApiPropertyOptional({ example: 'new@email.com' })
+  @IsEmail()
+  @IsOptional()
+  email?: string
+}
+```
+
+## DTO Naming
+
+`CreateUserDto`, `UpdateUserDto`, `SignInDto`, `PaginationDto` — NEVER generic names like `UserData`, `Payload`.
+
+## Global Validation Pipe (MANDATORY)
+
+`whitelist: true`, `forbidNonWhitelisted: true`, `transform: true` — no manual validation in controllers/services.
+
+## DTO Rules
+
+- No business logic in DTOs. DTOs are NOT output models
+- Always include `example` in `@ApiProperty`/`@ApiPropertyOptional`
+- Common validators: `@IsString`, `@IsEmail`, `@IsNumber`, `@IsBoolean`, `@IsNotEmpty`, `@IsOptional`, `@MinLength`, `@MaxLength`
