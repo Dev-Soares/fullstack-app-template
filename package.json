@@ -7,6 +7,7 @@
     "build": "pnpm --filter client build && pnpm --filter server build",
     "start:prod": "pnpm --filter server start:prod",
     "lint": "pnpm -r lint",
+    "typecheck": "pnpm --filter client exec tsc -b --noEmit && pnpm --filter server exec tsc --noEmit",
     "format": "prettier --write \"**/*.{ts,tsx,js,json}\""
   },
   "pnpm": {
